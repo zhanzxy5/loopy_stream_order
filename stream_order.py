@@ -1,4 +1,5 @@
-__author__ = 'Zhan'
+__author__ = 'Zhan Xianyuan'
+
 
 # Note:
 # Requirement on the node file: the node file must have following format
@@ -304,10 +305,15 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
     orderSet = {}
     # for node in sub_nodes:
 
-
+    # TODO: Implement the detailed sub-closure algorithm here
 
     return 0
 
+# This part uses rules to prune order set
+def HS_prune_order_set(subGraph, edge):
+    # TODO: implement the order set prune rules here
+    # To be finished
+    return 0
 
 # Get all decendents (including the node itself) from node to end node
 def HS_get_decedents_before(G, node_list, from_node, end_node):
@@ -342,6 +348,7 @@ def HS_draw_graph(G):
 # Output data
 def HS_output_graph(G):
     print "Writing processed graph to file..."
+    # TODO: implement the output IO here
 
 
 def main():  # For testing purpose
