@@ -22,12 +22,12 @@ def Loopy_HS_order(Fdir, prefix, nodeFileName, edgeFileName, isDraw):
         print "No root found in the node file"
         quit()
 
-    #print root
+    # print root
     # Add edges to the graph
     HS_add_edge(Fdir, edgeFileName, G)
 
     # We have to work on a network that every node are connected to the root, if not we need to prune the network
-    HS_get_connected_component(G,root)
+    HS_get_connected_component(G, root)
 
     print 'Number of nodes loaded: ' + str(G.number_of_nodes())
     print 'Number of edges loaded: ' + str(G.number_of_edges())
@@ -57,7 +57,6 @@ def Loopy_HS_order(Fdir, prefix, nodeFileName, edgeFileName, isDraw):
         HS_draw_graph(G)
 
 
-
 def HS_add_node(Fdir, nodeFileName, G):
     # First we need to parse the node file
     nodeFile = open(Fdir + nodeFileName, 'r')
@@ -82,11 +81,12 @@ def HS_add_node(Fdir, nodeFileName, G):
             # return the node key of the outlet
             root = node_id
         # Add the node
-        #G.add_node(node_id, pos=(x_coord, y_coord))
-        G.add_node(node_id, pos=(x_coord, y_coord), invElevation = invert_elevation, area = node_area, cumArea = 0, used = 0)
+        # G.add_node(node_id, pos=(x_coord, y_coord))
+        G.add_node(node_id, pos=(x_coord, y_coord), invElevation=invert_elevation, area=node_area, cumArea=0, used=0)
 
     nodeFile.close()
     return root
+
 
 def HS_add_edge(Fdir, edgeFileName, G):
     # First parse the edge file
@@ -115,26 +115,27 @@ def HS_add_edge(Fdir, edgeFileName, G):
         edge_otherAttr = {}
         edge_otherAttr['edge_id'] = edge_id
         if Nattr > 4:
-            for i in range(Nattr-4):
-                edge_otherAttr[header[4+i]]=line.split(',')[4+i]
+            for i in range(Nattr - 4):
+                edge_otherAttr[header[4 + i]] = line.split(',')[4 + i]
 
         # Add the edges
-        G.add_edge(from_node, to_node, length = node_length, used = 0, order = 0, otherAttr = edge_otherAttr)
+        G.add_edge(from_node, to_node, length=node_length, used=0, order=0, otherAttr=edge_otherAttr)
 
     edgeFile.close()
 
 
 # Following functions are the algorithms part:
 # Get a sub-graph in which every nodes are connected to the root
-def HS_get_connected_component(G,root):
+def HS_get_connected_component(G, root):
     # These are all the nodes that have path to root
     reachable_nodes = nx.ancestors(G, root)
-    #print reachable_nodes
+    # print reachable_nodes
     # We iterate through all the nodes and remove those that are not reachable
     for node_key in G.nodes():
         if node_key not in reachable_nodes:
             if node_key != root:
                 G.remove_node(node_key)
+
 
 # Identify all the leaves and initialize the peripheral nodes
 def HS_get_leaves(G):
@@ -143,15 +144,15 @@ def HS_get_leaves(G):
     for node_key in G.nodes():
         node = G[node_key]
         if G.in_degree(node_key) == 0:
-            if G.out_degree(node_key) >0:
+            if G.out_degree(node_key) > 0:
                 leaves.append(node_key)
                 # Marke the leaves as used and initialize the cumulative area
-                G.node[node_key]['used']=1
-                G.node[node_key]['cumArea']=G.node[node_key]['area']
+                G.node[node_key]['used'] = 1
+                G.node[node_key]['cumArea'] = G.node[node_key]['area']
 
                 # Next we need to mark the initial first order stream edges
                 successors = G.successors(node_key)
-                #print successors
+                # print successors
                 for child in successors:
                     G[node_key][child]['used'] = 1
                     G[node_key][child]['order'] = 1
@@ -159,6 +160,7 @@ def HS_get_leaves(G):
                         in_nodes.append(child)
 
     return in_nodes
+
 
 # This implements the Horton-Strauler order on tree like structures
 # We define a recursive procedure to handle the task
@@ -221,6 +223,7 @@ def HS_simplify_from_top(G, in_nodes):
     else:
         return in_nodes
 
+
 # Original Horton-Strauler stream order rule
 def HS_order_rule(upstream_order):
     max_order = max(upstream_order)
@@ -229,10 +232,11 @@ def HS_order_rule(upstream_order):
     for order in upstream_order:
         if order == max_order:
             N_max += 1
-    if N_max >1:
-        return max_order+1
+    if N_max > 1:
+        return max_order + 1
     else:
         return max_order
+
 
 # This one handles the super-closure, which performs simplify from top, and forms sub-closures, and finally returns IPDs as new in-nodes
 def HS_resolve_super_closure(G, in_nodes, doms):
@@ -266,43 +270,81 @@ def HS_resolve_super_closure(G, in_nodes, doms):
                 if len(set(predecessors).intersection(sub_closure[IPD])) == 0:
                     for parent in predecessors:
                         if G[parent][node]['used'] == 0:
-                            #print "IPD: parent -- node: " + IPD +': ' parent + ' -- ' + node
+                            # print "IPD: parent -- node: " + IPD +': ' parent + ' -- ' + node
                             solvable = False
                             break
 
         if solvable:
             HS_resolve_sub_closure(G, sub_closure[IPD], IPD)
+            # replace the in_nodes with the IPD in the super_closure
+            for i in range(len(in_nodes)):
+                if in_nodes[i] in sub_closure[IPD]:
+                    in_nodes[i] = IPD
 
-    return ['Out'] # for testing only
-    #return sub_closure.keys()
+    in_nodes = list(set(in_nodes))
+
+    return ['Out']  # for testing only
+    # return in_nodes
+
 
 def HS_resolve_sub_closure(G, in_nodes, IPD):
-    # Here we extract a sub-net for analysis
-
+    # Since the out-most in-nodes' parents are all concretized, thus we can safely extract the sub-graph between in_nodes and IPD
+    sub_nodes = []
+    for node in in_nodes:
+        sub_nodes = HS_get_decedents_before(G, sub_nodes, node, IPD)
 
     print "Sub-closure: " + IPD
     print in_nodes
+    print sub_nodes
+
+    # Extract the sub-graph
+    subGraph = G.subgraph(sub_nodes)
+
+    # Create the initial order set
+    orderSet = {}
+    # for node in sub_nodes:
+
+
+
     return 0
+
+
+# Get all decendents (including the node itself) from node to end node
+def HS_get_decedents_before(G, node_list, from_node, end_node):
+    if from_node not in node_list:
+        node_list.append(from_node)
+    successors = G.successors(from_node)
+    if len(successors) == 1 and successors[0] == end_node:
+        if end_node not in node_list:
+            node_list.append(end_node)
+        return node_list
+
+    for node in successors:
+        node_list = HS_get_decedents_before(G, node_list, node, end_node)
+
+    return node_list
+
 
 # A drawing function, used for debugging
 def HS_draw_graph(G):
     pos = nx.get_node_attributes(G, 'pos')
     order_label = nx.get_edge_attributes(G, 'order')
     plt.figure(figsize=(10, 10))
-    nx.draw_networkx_nodes(G, pos, node_size = 20)
-    nx.draw_networkx_edges(G, pos, width = 0.8)
-    nx.draw_networkx_edge_labels(G, pos, edge_labels = order_label, label_pos = 0.5, font_size = 10, alpha = 1, rotate = False)
-    nx.draw_networkx_labels(G,pos,font_size=15)
-
+    nx.draw_networkx_nodes(G, pos, node_size=20)
+    nx.draw_networkx_edges(G, pos, width=0.8)
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=order_label, label_pos=0.5, font_size=10, alpha=1, rotate=False)
+    nx.draw_networkx_labels(G, pos, font_size=15)
 
     plt.savefig('test.png')
     plt.show()
+
 
 # Output data
 def HS_output_graph(G):
     print "Writing processed graph to file..."
 
-def main(): # For testing purpose
+
+def main():  # For testing purpose
     # Input parameter: parameter to change
     Fdir = 'data/'
     prefix = 'Labeled'
