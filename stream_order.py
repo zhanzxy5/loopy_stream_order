@@ -12,6 +12,7 @@ __author__ = 'Zhan Xianyuan'
 import math
 import matplotlib.pyplot as plt
 import networkx as nx
+import math
 
 
 # Major function
@@ -165,6 +166,7 @@ def HS_get_leaves(G):
 
 # This implements the Horton-Strauler order on tree like structures
 # We define a recursive procedure to handle the task
+# The function always returns a set of unconcretized node with concretized link end at it
 def HS_simplify_from_top(G, in_nodes):
     # For each node, we do one step further, and stop only if for all nodes, there is no improvement
     # Number of nodes improved
@@ -276,11 +278,15 @@ def HS_resolve_super_closure(G, in_nodes, doms):
                             break
 
         if solvable:
-            HS_resolve_sub_closure(G, sub_closure[IPD], IPD)
+            end_nodes = HS_resolve_sub_closure(G, sub_closure[IPD], IPD)
             # replace the in_nodes with the IPD in the super_closure
             for i in range(len(in_nodes)):
                 if in_nodes[i] in sub_closure[IPD]:
-                    in_nodes[i] = IPD
+                    in_nodes[i] = end_nodes[0]
+
+            if len(end_nodes)>1:
+                for i in range(len(end_nodes)-1):
+                    in_nodes.append(end_nodes[i+1])
 
     in_nodes = list(set(in_nodes))
 
@@ -303,22 +309,98 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
 
     # Create the initial order set
     orderSet = {}
+
     # initialize the order at the edge at IPD
+    # We first check if N_in^max >1
+    O_in_max = 0
+    N_in_max = 0
+    in_node_info = {}
     for node in in_nodes:
-        predecessors = G.predecessors(node)
+        in_node_info[node] = HS_get_anc_info(G, node) # ancestors of in-nodes not in subGraph
+        if O_in_max < in_node_info[node]["max_order"]:
+            O_in_max = in_node_info[node]["max_order"]
+            N_in_max = 1
+        else:
+            if O_in_max == in_node_info[node]["max_order"]:
+                N_in_max += 1
 
-    # for each edge in the subGraph other than IPD:
-    # for edge in subGraph.edges():
+    end_nodes = G.successors(IPD) # decendents of end-nodes not in subGraph
+    end_edges = [] # These edges are also not in subGraph
+    for enode in end_nodes:
+        end_edges.append((IPD, enode))
+
+    if N_in_max > 1:
+        # For all edges out of IPD, we assign order starting from O_in_max + 1
+        for edge in end_edges:
+            lower = O_in_max + 1
+            upper = O_in_max + int(math.floor(math.log(N_in_max, 2)))
+
+            if upper > lower:
+                orderSet[edge] = range(lower, upper + 1)
+            else:
+                orderSet[edge] = [min(lower, upper)]
+                # order set is a singleton, we can directly concretize it
+                HS_concretize(G, edge, orderSet[edge][0], in_node_info["upstream_aea"])
+    else:
+        # Otherwise, we start the order from O_in_max
+        for edge in end_edges:
+            lower = O_in_max
+            upper = O_in_max + int(math.floor(math.log(N_in_max, 2)))
+
+            if upper > lower:
+                orderSet[edge] = range(lower, upper + 1)
+            else:
+                orderSet[edge] = [min(lower, upper)]
+                # order set is a singleton, we can directly concretize it
+                HS_concretize(G, edge, orderSet[edge][0], in_node_info["upstream_aea"])
+
+    # Next, we initialize the OrderSet of the rest of the edges
+    for edge in subGraph.edges():
+        lower = O_in_max
+        upper = O_in_max + int(math.floor(math.log(N_in_max, 2)))
+
+        if upper > lower:
+            orderSet[edge] = range(lower, upper + 1)
+        else:
+            orderSet[edge] = [min(lower, upper)]
+            # order set is a singleton, we can directly concretize it
+            HS_concretize(G, edge, orderSet[edge][0], [0])
 
 
-    # TODO: Implement the detailed sub-closure algorithm here
+    # Number of unconcreteized edges
+    N_unconcrete = len(orderSet.keys())
+
+    while N_unconcrete > 0:
+        # First handle the diverging case
 
 
-    return 0
+        # We count the exact number of N_unconcrete, this step perform together with prune order set
+        cur_N_unconcrete = 0
+        for edge in orderSet.keys():
+            if G[edge[0]][edge[1]]['used'] == 0:
+                flag = HS_prune_order_set(subGraph, edge, orderSet)
+                if flag < 2:
+                    cur_N_unconcrete += 1
+
+
+        # TODO: implement the merging case
+
+        if cur_N_unconcrete < N_unconcrete:
+            N_unconcrete = cur_N_unconcrete
+
+
+    return end_nodes
+
+# concretize a edge and its from node
+# Set upstream_area to [0] if do not need to compute
+def HS_concretize(G, edge, edgeOrder, upstream_area):
+    G[edge[0]][edge[1]]['order'] = edgeOrder
+    G[edge[0]][edge[1]]['used'] = 1
+    G.node[edge[0]]['used'] = 1
+    G.node[edge[0]]['cumArea'] = sum(upstream_area)
 
 # return the information related to the stream orders of the ancestor
-def HS_get_anc_order(G, edge):
-    node = edge[0]
+def HS_get_anc_info(G, node):
     anc_info = {}
     predecessors = G.predecessors(node)
     anc_info["N_parents"] = len(predecessors)
@@ -326,6 +408,7 @@ def HS_get_anc_order(G, edge):
     anc_info["N_max_order"] = 0
     anc_info["min_order"] = 999
     anc_info["max_order"] = 0
+    anc_info["upstream_aea"] = []
 
     for parent in predecessors:
         if G[parent][node]['order'] >0:
@@ -341,11 +424,14 @@ def HS_get_anc_order(G, edge):
             if G[parent][node]['order'] < anc_info["min_order"]:
                 anc_info["min_order"] = G[parent][node]['order']
 
+        # This one gets the list of upstream_areas for computing downstream cumArea
+        if G.node[parent]['cumArea'] > 0:
+            anc_info["upstream_aea"].append(G.node[parent]['cumArea'])
+
     return anc_info
 
 # return the information related to the stream orders of the decendents
-def HS_get_dec_order(G, edge):
-    node = edge[1]
+def HS_get_suc_info(G, node):
     suc_info = {}
     successors = G.successors(node)
     suc_info["N_children"] = len(successors)
@@ -366,8 +452,9 @@ def HS_get_dec_order(G, edge):
     return suc_info
 
 
-# This part uses rules to prune order set
-def HS_prune_order_set(subGraph, edge):
+# This part uses rules to prune order set.
+# Return following information: 0- no improvement; 1- improved, unconcretized; 2- improved and concretized
+def HS_prune_order_set(subGraph, edge, orderSet):
     # TODO: implement the order set prune rules here
     # To be finished
     return 0
