@@ -303,11 +303,68 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
 
     # Create the initial order set
     orderSet = {}
-    # for node in sub_nodes:
+    # initialize the order at the edge at IPD
+    for node in in_nodes:
+        predecessors = G.predecessors(node)
+
+    # for each edge in the subGraph other than IPD:
+    # for edge in subGraph.edges():
+
 
     # TODO: Implement the detailed sub-closure algorithm here
 
+
     return 0
+
+# return the information related to the stream orders of the ancestor
+def HS_get_anc_order(G, edge):
+    node = edge[0]
+    anc_info = {}
+    predecessors = G.predecessors(node)
+    anc_info["N_parents"] = len(predecessors)
+    anc_info["N_concrete"] = 0
+    anc_info["N_max_order"] = 0
+    anc_info["min_order"] = 999
+    anc_info["max_order"] = 0
+
+    for parent in predecessors:
+        if G[parent][node]['order'] >0:
+            # we find a concretized parent
+            anc_info['N_concrete'] += 1
+            if G[parent][node]['order'] > anc_info["max_order"]:
+                anc_info["max_order"] = 1
+                anc_info["max_order"] = G[parent][node]['order']
+            else:
+                if G[parent][node]['order'] == anc_info["max_order"]:
+                    anc_info["max_order"] += 1
+
+            if G[parent][node]['order'] < anc_info["min_order"]:
+                anc_info["min_order"] = G[parent][node]['order']
+
+    return anc_info
+
+# return the information related to the stream orders of the decendents
+def HS_get_dec_order(G, edge):
+    node = edge[1]
+    suc_info = {}
+    successors = G.successors(node)
+    suc_info["N_children"] = len(successors)
+    suc_info["N_concrete"] = 0
+    suc_info["min_order"] = 999
+    suc_info["max_order"] = 0
+
+    for child in successors:
+        if G[node][child]['order'] >0:
+            # we find a concretized parent
+            suc_info['N_concrete'] += 1
+            if G[node][child]['order'] > suc_info["max_order"]:
+                suc_info["max_order"] = G[node][child]['order']
+
+            if G[node][child]['order'] < suc_info["min_order"]:
+                suc_info["min_order"] = G[node][child]['order']
+
+    return suc_info
+
 
 # This part uses rules to prune order set
 def HS_prune_order_set(subGraph, edge):
