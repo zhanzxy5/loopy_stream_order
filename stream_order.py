@@ -1,5 +1,5 @@
 __author__ = 'Zhan Xianyuan'
-
+# This code is written by Xianyuan Zhan, Purdue University.
 
 # Note:
 # Requirement on the node file: the node file must have following format
@@ -9,7 +9,6 @@ __author__ = 'Zhan Xianyuan'
 #                               The edge file should contain at above attribute, these information will be
 #                               maintained in the data, however not used in the H-S order computation
 
-import math
 import matplotlib.pyplot as plt
 import networkx as nx
 import math
@@ -227,7 +226,7 @@ def HS_simplify_from_top(G, in_nodes):
         return in_nodes
 
 
-# Original Horton-Strauler stream order rule
+# Original Horton-Strauler stream order rule when performing simplify-from-top
 def HS_order_rule(upstream_order):
     max_order = max(upstream_order)
     # count number of max_order stream
@@ -235,11 +234,16 @@ def HS_order_rule(upstream_order):
     for order in upstream_order:
         if order == max_order:
             N_max += 1
+
+    return HS_merge_order_rule(N_max, max_order)
+
+
+# This parts implement HS stream order merging rule in the undirected loopy sub-structure
+def HS_merge_order_rule(N_max, max_order):
     if N_max > 1:
         return max_order + 1
     else:
         return max_order
-
 
 # This one handles the super-closure, which performs simplify from top, and forms sub-closures, and finally returns IPDs as new in-nodes
 def HS_resolve_super_closure(G, in_nodes, doms):
@@ -340,7 +344,7 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
             else:
                 orderSet[edge] = [min(lower, upper)]
                 # order set is a singleton, we can directly concretize it
-                HS_concretize(G, edge, orderSet[edge][0], in_node_info["upstream_aea"])
+                HS_concretize(G, edge, orderSet[edge][0], in_node_info["upstream_area"])
     else:
         # Otherwise, we start the order from O_in_max
         for edge in end_edges:
@@ -352,7 +356,7 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
             else:
                 orderSet[edge] = [min(lower, upper)]
                 # order set is a singleton, we can directly concretize it
-                HS_concretize(G, edge, orderSet[edge][0], in_node_info["upstream_aea"])
+                HS_concretize(G, edge, orderSet[edge][0], in_node_info["upstream_area"])
 
     # Next, we initialize the OrderSet of the rest of the edges
     for edge in subGraph.edges():
@@ -366,13 +370,27 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
             # order set is a singleton, we can directly concretize it
             HS_concretize(G, edge, orderSet[edge][0], [0])
 
+    # orderSet construction finished, we don't need the subGraph anymore, we can remove it
+    subGraph.clear()
 
     # Number of unconcreteized edges
     N_unconcrete = len(orderSet.keys())
 
     while N_unconcrete > 0:
+        N_improve = 0
         # First handle the diverging case
-
+        for edge in orderSet.keys():
+            if G[edge[0]][edge[1]]['used'] == 0:
+                # Let's get the ancestor's info to see if it is all concretized
+                anc_info = HS_get_anc_info(G, edge[0])
+                if anc_info["N_concrete"] == anc_info["N_parents"]:
+                    # check if it has diverges
+                    successors = G.successors(edge[0])
+                    if len(successors) > 0:
+                        for node in successors:
+                            orderSet[(edge[0], node)] = [anc_info["max_order"]]
+                            HS_concretize(G, (edge[0], node), anc_info["max_order"], [0])
+                            N_improve += 1
 
         # We count the exact number of N_unconcrete, this step perform together with prune order set
         cur_N_unconcrete = 0
@@ -381,10 +399,24 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
                 flag = HS_prune_order_set(subGraph, edge, orderSet)
                 if flag < 2:
                     cur_N_unconcrete += 1
+                if flag > 0:
+                    N_improve += 1
 
+        # This parts handles the merging case
+        if N_improve == 0 and cur_N_unconcrete > 0:
+            for edge in orderSet.keys():
+                if G[edge[0]][edge[1]]['used'] == 0:
+                    # We need to check if it is a merging with all concretized ancestors
+                    anc_info = HS_get_anc_info(G, edge[0])
+                    if G.out_degree(edge[0]) == 1:
+                        if anc_info["N_concrete"] == anc_info["N_parents"] and anc_info["N_parents"] > 1:
+                            # This is a valid merging, we can merge it
+                            orderSet[edge] = [HS_merge_order_rule(anc_info["N_max_order"], anc_info["max_order"])]
+                            HS_concretize(G, edge, orderSet[edge], [0])
+                            # We just do one merging at a time
+                            break
 
-        # TODO: implement the merging case
-
+        # Update the number of unconcretized edges
         if cur_N_unconcrete < N_unconcrete:
             N_unconcrete = cur_N_unconcrete
 
@@ -408,7 +440,7 @@ def HS_get_anc_info(G, node):
     anc_info["N_max_order"] = 0
     anc_info["min_order"] = 999
     anc_info["max_order"] = 0
-    anc_info["upstream_aea"] = []
+    anc_info["upstream_area"] = []
 
     for parent in predecessors:
         if G[parent][node]['order'] >0:
@@ -426,7 +458,7 @@ def HS_get_anc_info(G, node):
 
         # This one gets the list of upstream_areas for computing downstream cumArea
         if G.node[parent]['cumArea'] > 0:
-            anc_info["upstream_aea"].append(G.node[parent]['cumArea'])
+            anc_info["upstream_area"].append(G.node[parent]['cumArea'])
 
     return anc_info
 
