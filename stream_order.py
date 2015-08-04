@@ -47,7 +47,7 @@ def Loopy_HS_order(Fdir, prefix, nodeFileName, edgeFileName, isDraw):
 
     # This is main iteration
     # while 1:
-    for i in range(2):
+    for i in range(5):
         end_nodes = HS_resolve_super_closure(G, in_nodes, doms)
 
         if len(end_nodes) == 1 and end_nodes[0] == root:
@@ -257,6 +257,7 @@ def HS_resolve_super_closure(G, in_nodes, doms):
     print in_nodes
     # From the in_nodes, we form a set of sub-closures
     sub_closure = {}
+    IPDdict = {}
     for node_key in in_nodes:
         IPD = doms[node_key]
         # We might encounter cases that the in-nodes itself serve as IPD, under such cases, we need to merge it into downstream dominators
@@ -269,31 +270,57 @@ def HS_resolve_super_closure(G, in_nodes, doms):
             sub_closure[IPD] = [node_key]
         else:
             sub_closure[IPD].append(node_key)
+        IPDdict[node_key] = IPD
 
     # We need to continue merge some of the sub-closure, that the in-nodes have in-nodes parent
     # Under such cases, we merge the sub-closure to its in-nodes parent's sub-closure
-    # TODO: finish this
-    # for node_key in in_nodes:
-    #     predecessors = G.predecessors(node_key)
-    #     in_node_parents = list(set(predecessors).intersection(in_nodes))
-    #     if len(in_node_parents) == 0:
-    #         IPD = doms[node_key]
-    #     else:
+    flag = True
+    while flag:
+        flag = False
+        for node_key in in_nodes:
+            predecessors = G.predecessors(node_key)
+            local_in_node = set(predecessors).intersection(sub_closure[IPDdict[node_key]])
+            all_in_node = set(predecessors).intersection(in_nodes)
+            out_in_node = list(all_in_node - local_in_node)
+            if len(out_in_node) >0:
+                # We are in trouble, we need to merge the sub-closure to its parents'
+                # We just merge to the first parent, the rest will be handled by the loop
+                # directly merge
+                sub_closure[IPDdict[out_in_node[0]]] = sub_closure[IPDdict[out_in_node[0]]] + sub_closure[IPDdict[node_key]]
+                old_IPD = IPDdict[node_key]
+                for node in sub_closure[old_IPD]:
+                    IPDdict[node] = IPDdict[out_in_node[0]]
+                del sub_closure[old_IPD]
+                flag = True
+
 
     print "Number of IPDs = " + str(len(sub_closure.keys()))
     for IPD in sub_closure.keys():
         # We can only process the sub-closure whose ancestors are all concretized
-        solvable = True
+        solvable = False
         for node in sub_closure[IPD]:
             predecessors = G.predecessors(node)
             if len(predecessors) > 0:
+                # # We require the sub-closure has at least 1 node with all concrete parents
+                # all_concrete = True
+                # for parent in predecessors:
+                #     if G[parent][node]['used'] == 0:
+                #         all_concrete = False
+                #         break
+                # if all_concrete:
+                #     solvable = True
+                #     break
+
                 # We should not consider a in-node if it is not the out-most one
                 if len(set(predecessors).intersection(sub_closure[IPD])) == 0:
                     for parent in predecessors:
                         if G[parent][node]['used'] == 0:
-                            # print "IPD: parent -- node: " + IPD +': ' parent + ' -- ' + node
-                            solvable = False
-                            break
+                            if parent not in in_nodes:
+                                # we allow unconcretized in_nodes, since they are not the out-most in-nodes
+                                # print "IPD: parent -- node: " + IPD +': ' parent + ' -- ' + node
+                                solvable = False
+                                print IPD + ' -- ' + node
+                                break
 
         print "Sub-closure: " + IPD
         print sub_closure[IPD]
@@ -441,12 +468,17 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
                             # This is a valid merging, we can merge it
                             orderSet[edge] = [HS_merge_order_rule(anc_info["N_max_order"], anc_info["max_order"])]
                             HS_concretize(G, edge, orderSet[edge][0], [0])
+                            N_improve += 1
                             # We just do one merging at a time
                             break
 
         # Update the number of unconcretized edges
         if cur_N_unconcrete < N_unconcrete:
             N_unconcrete = cur_N_unconcrete
+
+        if N_unconcrete > 0 and N_improve == 0:
+            print "I can't solve this sub-closure any further"
+            break
 
 
     return end_nodes
