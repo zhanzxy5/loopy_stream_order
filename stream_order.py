@@ -46,13 +46,14 @@ def Loopy_HS_order(Fdir, prefix, nodeFileName, edgeFileName, isDraw):
     # in_nodes = HS_simplify_from_top(G, in_nodes)
 
     # This is main iteration
-    while 1:
-        IPDs = HS_resolve_super_closure(G, in_nodes, doms)
+    # while 1:
+    for i in range(2):
+        end_nodes = HS_resolve_super_closure(G, in_nodes, doms)
 
-        if len(IPDs) == 1 and IPDs[0] == root:
+        if len(end_nodes) == 1 and end_nodes[0] == root:
             break
         else:
-            in_nodes = IPDs
+            in_nodes = end_nodes
 
     # Work done! Write results to files
     HS_output_graph(G)
@@ -252,7 +253,8 @@ def HS_resolve_super_closure(G, in_nodes, doms):
     # Initial simplify_from_top
     in_nodes = HS_simplify_from_top(G, in_nodes)
 
-    print "Number of in_nodes = " + str(len(in_nodes))
+    print "\nNumber of in_nodes = " + str(len(in_nodes))
+    print in_nodes
     # From the in_nodes, we form a set of sub-closures
     sub_closure = {}
     for node_key in in_nodes:
@@ -267,6 +269,16 @@ def HS_resolve_super_closure(G, in_nodes, doms):
             sub_closure[IPD] = [node_key]
         else:
             sub_closure[IPD].append(node_key)
+
+    # We need to continue merge some of the sub-closure, that the in-nodes have in-nodes parent
+    # Under such cases, we merge the sub-closure to its in-nodes parent's sub-closure
+    # TODO: finish this
+    # for node_key in in_nodes:
+    #     predecessors = G.predecessors(node_key)
+    #     in_node_parents = list(set(predecessors).intersection(in_nodes))
+    #     if len(in_node_parents) == 0:
+    #         IPD = doms[node_key]
+    #     else:
 
     print "Number of IPDs = " + str(len(sub_closure.keys()))
     for IPD in sub_closure.keys():
@@ -283,6 +295,9 @@ def HS_resolve_super_closure(G, in_nodes, doms):
                             solvable = False
                             break
 
+        print "Sub-closure: " + IPD
+        print sub_closure[IPD]
+
         if solvable:
             end_nodes = HS_resolve_sub_closure(G, sub_closure[IPD], IPD)
             # replace the in_nodes with the IPD in the super_closure
@@ -296,8 +311,8 @@ def HS_resolve_super_closure(G, in_nodes, doms):
 
     in_nodes = list(set(in_nodes))
 
-    return ['Out']  # for testing only
-    # return in_nodes
+    # return ['Out']  # for testing only
+    return in_nodes
 
 
 def HS_resolve_sub_closure(G, in_nodes, IPD):
@@ -306,7 +321,7 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
     for node in in_nodes:
         sub_nodes = HS_get_decedents_before(G, sub_nodes, node, IPD)
 
-    print "Sub-closure: " + IPD
+    print "Solvable Sub-closure: " + IPD
     print in_nodes
     print sub_nodes
 
@@ -336,7 +351,7 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
             O_in_min = in_node_info[node]["min_order"]
         in_node_upstream_area = in_node_upstream_area + in_node_info[node]["upstream_area"]
 
-    end_nodes = G.successors(IPD) # decendents of end-nodes not in subGraph
+    end_nodes = G.successors(IPD) # decendents of end-nodes out of IPD
     end_edges = [] # These edges are also not in subGraph
     for enode in end_nodes:
         end_edges.append((IPD, enode))
