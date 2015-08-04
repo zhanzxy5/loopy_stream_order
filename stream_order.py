@@ -43,6 +43,8 @@ def Loopy_HS_order(Fdir, prefix, nodeFileName, edgeFileName, isDraw):
     in_nodes = HS_get_leaves(G)
     print 'Number of initial in-nodes = ' + str(len(in_nodes))
 
+    # in_nodes = HS_simplify_from_top(G, in_nodes)
+
     # This is main iteration
     while 1:
         IPDs = HS_resolve_super_closure(G, in_nodes, doms)
@@ -50,7 +52,7 @@ def Loopy_HS_order(Fdir, prefix, nodeFileName, edgeFileName, isDraw):
         if len(IPDs) == 1 and IPDs[0] == root:
             break
         else:
-            super_closure = IPDs
+            in_nodes = IPDs
 
     # Work done! Write results to files
     HS_output_graph(G)
@@ -317,9 +319,12 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
     # initialize the order at the edge at IPD
     # We first check if N_in^max >1
     O_in_max = 0
+    O_in_min = 999
     N_in_max = 0
     in_node_info = {}
+    in_node_upstream_area = []
     for node in in_nodes:
+        # in-nodes at least have 1 concrete parent
         in_node_info[node] = HS_get_anc_info(G, node) # ancestors of in-nodes not in subGraph
         if O_in_max < in_node_info[node]["max_order"]:
             O_in_max = in_node_info[node]["max_order"]
@@ -327,6 +332,9 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
         else:
             if O_in_max == in_node_info[node]["max_order"]:
                 N_in_max += 1
+        if O_in_min > in_node_info[node]["min_order"]:
+            O_in_min = in_node_info[node]["min_order"]
+        in_node_upstream_area = in_node_upstream_area + in_node_info[node]["upstream_area"]
 
     end_nodes = G.successors(IPD) # decendents of end-nodes not in subGraph
     end_edges = [] # These edges are also not in subGraph
@@ -344,7 +352,7 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
             else:
                 orderSet[edge] = [min(lower, upper)]
                 # order set is a singleton, we can directly concretize it
-                HS_concretize(G, edge, orderSet[edge][0], in_node_info["upstream_area"])
+                HS_concretize(G, edge, orderSet[edge][0], in_node_upstream_area)
     else:
         # Otherwise, we start the order from O_in_max
         for edge in end_edges:
@@ -356,11 +364,11 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
             else:
                 orderSet[edge] = [min(lower, upper)]
                 # order set is a singleton, we can directly concretize it
-                HS_concretize(G, edge, orderSet[edge][0], in_node_info["upstream_area"])
+                HS_concretize(G, edge, orderSet[edge][0], in_node_upstream_area)
 
     # Next, we initialize the OrderSet of the rest of the edges
     for edge in subGraph.edges():
-        lower = O_in_max
+        lower = O_in_min
         upper = O_in_max + int(math.floor(math.log(N_in_max, 2)))
 
         if upper > lower:
@@ -372,6 +380,11 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
 
     # orderSet construction finished, we don't need the subGraph anymore, we can remove it
     subGraph.clear()
+
+    # # debugging:
+    # for edge in orderSet.keys():
+    #     print edge
+    #     print orderSet[edge]
 
     # Number of unconcreteized edges
     N_unconcrete = len(orderSet.keys())
@@ -396,7 +409,7 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
         cur_N_unconcrete = 0
         for edge in orderSet.keys():
             if G[edge[0]][edge[1]]['used'] == 0:
-                flag = HS_prune_order_set(subGraph, edge, orderSet)
+                flag = HS_prune_order_set(G, edge, orderSet)
                 if flag < 2:
                     cur_N_unconcrete += 1
                 if flag > 0:
@@ -412,7 +425,7 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
                         if anc_info["N_concrete"] == anc_info["N_parents"] and anc_info["N_parents"] > 1:
                             # This is a valid merging, we can merge it
                             orderSet[edge] = [HS_merge_order_rule(anc_info["N_max_order"], anc_info["max_order"])]
-                            HS_concretize(G, edge, orderSet[edge], [0])
+                            HS_concretize(G, edge, orderSet[edge][0], [0])
                             # We just do one merging at a time
                             break
 
@@ -486,10 +499,73 @@ def HS_get_suc_info(G, node):
 
 # This part uses rules to prune order set.
 # Return following information: 0- no improvement; 1- improved, unconcretized; 2- improved and concretized
-def HS_prune_order_set(subGraph, edge, orderSet):
-    # TODO: implement the order set prune rules here
-    # To be finished
-    return 0
+def HS_prune_order_set(G, edge, orderSet):
+    candOrder = orderSet[edge]
+    nOrder = len(candOrder)
+    flag = 0
+
+    if nOrder == 1:
+        HS_concretize(G, edge, candOrder[0], [0])
+        return 2
+
+    lower = candOrder[0]
+    upper = candOrder[nOrder - 1]
+
+    # get ancestor and successor's info
+    anc_info = HS_get_anc_info(G, edge[0])
+    suc_info = HS_get_suc_info(G, edge[1])
+
+    # Rule 1: update lower
+    if anc_info["N_concrete"] > 0 and lower < anc_info["max_order"]:
+    # Prune out all orders that below O_anc_max
+        for order in candOrder:
+            if order < anc_info["max_order"]:
+                candOrder.remove(order)
+                nOrder -= 1
+        lower = candOrder[0]
+        flag = 1
+
+    # Rule 2: update the upper
+    new_upper = upper
+    if anc_info["N_concrete"] > 0 and anc_info["N_max_order"] > 1:
+        if upper > anc_info["max_order"] + 1:
+            new_upper = anc_info["max_order"] + 1
+
+    if suc_info["N_concrete"] > 0 and new_upper > suc_info["min_order"]:
+        new_upper = suc_info["min_order"]
+
+    if upper > new_upper:
+        for order in candOrder:
+            if order > new_upper:
+                candOrder.remove(order)
+                nOrder -= 1
+        flag = 1
+
+    upper = candOrder[nOrder-1]
+
+    # Rule 3: additional rule: no-merge
+    # If it is a merge
+    if G.in_degree(edge[1]) > 1 and nOrder > 0:
+        # get successor's ancestor info
+        dec_anc_info = HS_get_anc_info(G, edge[1])
+        if anc_info["N_concrete"] > 0:
+            if lower < suc_info["min_order"] and suc_info["min_order"] == dec_anc_info["max_order"]:
+                upper = suc_info["min_order"] - 1
+                for order in candOrder:
+                    if order > upper:
+                        candOrder.remove(order)
+                        nOrder -= 1
+                flag = 1
+
+    # We concretize the edge if it is a singleton
+    if nOrder == 1:
+        HS_concretize(G, edge, candOrder[0], [0])
+        flag = 2
+
+    orderSet[edge] = candOrder
+
+    return flag
+
 
 # Get all decendents (including the node itself) from node to end node
 def HS_get_decedents_before(G, node_list, from_node, end_node):
