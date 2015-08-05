@@ -47,7 +47,7 @@ def Loopy_HS_order(Fdir, prefix, nodeFileName, edgeFileName, isDraw):
 
     # This is main iteration
     # while 1:
-    for i in range(5):
+    for i in range(2):
         end_nodes = HS_resolve_super_closure(G, in_nodes, doms)
 
         if len(end_nodes) == 1 and end_nodes[0] == root:
@@ -296,8 +296,11 @@ def HS_resolve_super_closure(G, in_nodes, doms):
 
     print "Number of IPDs = " + str(len(sub_closure.keys()))
     for IPD in sub_closure.keys():
+        print "Sub-closure: " + IPD
+        print sub_closure[IPD]
+
         # We can only process the sub-closure whose ancestors are all concretized
-        solvable = False
+        solvable = True
         for node in sub_closure[IPD]:
             predecessors = G.predecessors(node)
             if len(predecessors) > 0:
@@ -317,13 +320,10 @@ def HS_resolve_super_closure(G, in_nodes, doms):
                         if G[parent][node]['used'] == 0:
                             if parent not in in_nodes:
                                 # we allow unconcretized in_nodes, since they are not the out-most in-nodes
-                                # print "IPD: parent -- node: " + IPD +': ' parent + ' -- ' + node
+                                print "IPD: parent -- node: " + IPD + ': ' + parent + ' - ' + node
                                 solvable = False
-                                print IPD + ' -- ' + node
                                 break
 
-        print "Sub-closure: " + IPD
-        print sub_closure[IPD]
 
         if solvable:
             end_nodes = HS_resolve_sub_closure(G, sub_closure[IPD], IPD)
