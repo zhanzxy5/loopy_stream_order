@@ -46,8 +46,8 @@ def Loopy_HS_order(Fdir, prefix, nodeFileName, edgeFileName, isDraw):
     # in_nodes = HS_simplify_from_top(G, in_nodes)
 
     # This is main iteration
-    while 1:
-    # for i in range(5):
+    # while 1:
+    for i in range(5):
         end_nodes = HS_resolve_super_closure(G, in_nodes, doms)
 
         if len(end_nodes) == 0:
@@ -257,19 +257,11 @@ def HS_resolve_super_closure(G, in_nodes, doms):
     # From the in_nodes, we form a set of sub-closures
     sub_closure = {}
     IPDdict = {}
-    cand_node = []
     for node_key in in_nodes:
-        # We only intestested in forming sub-closure for in-nodes with all concretized parents
-        anc_info = HS_get_anc_info(G, node_key)
-        if anc_info["N_concrete"] == anc_info["N_parents"]:
-            cand_node.append(node_key)
-
-    # cand_node = in_nodes
-    for node_key in cand_node:
         IPD = doms[node_key]
         # We might encounter cases that the in-nodes itself serve as IPD, under such cases, we need to merge it into downstream dominators
         while 1:
-            if IPD in cand_node:
+            if IPD in in_nodes:
                 IPD = doms[IPD]
             else:
                 break
@@ -284,7 +276,7 @@ def HS_resolve_super_closure(G, in_nodes, doms):
     flag = True
     while flag:
         flag = False
-        for node_key in cand_node:
+        for node_key in in_nodes:
             predecessors = G.predecessors(node_key)
             local_in_node = set(predecessors).intersection(sub_closure[IPDdict[node_key]])
             all_in_node = set(predecessors).intersection(in_nodes)
