@@ -46,11 +46,11 @@ def Loopy_HS_order(Fdir, prefix, nodeFileName, edgeFileName, isDraw):
     # in_nodes = HS_simplify_from_top(G, in_nodes)
 
     # This is main iteration
-    # while 1:
-    for i in range(2):
+    while 1:
+    # for i in range(5):
         end_nodes = HS_resolve_super_closure(G, in_nodes, doms)
 
-        if len(end_nodes) == 1 and end_nodes[0] == root:
+        if len(end_nodes) == 0:
             break
         else:
             in_nodes = end_nodes
@@ -146,7 +146,6 @@ def HS_get_leaves(G):
     leaves = []
     in_nodes = []
     for node_key in G.nodes():
-        node = G[node_key]
         if G.in_degree(node_key) == 0:
             if G.out_degree(node_key) > 0:
                 leaves.append(node_key)
@@ -258,11 +257,19 @@ def HS_resolve_super_closure(G, in_nodes, doms):
     # From the in_nodes, we form a set of sub-closures
     sub_closure = {}
     IPDdict = {}
+    cand_node = []
     for node_key in in_nodes:
+        # We only intestested in forming sub-closure for in-nodes with all concretized parents
+        anc_info = HS_get_anc_info(G, node_key)
+        if anc_info["N_concrete"] == anc_info["N_parents"]:
+            cand_node.append(node_key)
+
+    # cand_node = in_nodes
+    for node_key in cand_node:
         IPD = doms[node_key]
         # We might encounter cases that the in-nodes itself serve as IPD, under such cases, we need to merge it into downstream dominators
         while 1:
-            if IPD in in_nodes:
+            if IPD in cand_node:
                 IPD = doms[IPD]
             else:
                 break
@@ -277,7 +284,7 @@ def HS_resolve_super_closure(G, in_nodes, doms):
     flag = True
     while flag:
         flag = False
-        for node_key in in_nodes:
+        for node_key in cand_node:
             predecessors = G.predecessors(node_key)
             local_in_node = set(predecessors).intersection(sub_closure[IPDdict[node_key]])
             all_in_node = set(predecessors).intersection(in_nodes)
@@ -293,38 +300,12 @@ def HS_resolve_super_closure(G, in_nodes, doms):
                 del sub_closure[old_IPD]
                 flag = True
 
-
     print "Number of IPDs = " + str(len(sub_closure.keys()))
     for IPD in sub_closure.keys():
         print "Sub-closure: " + IPD
         print sub_closure[IPD]
 
-        # We can only process the sub-closure whose ancestors are all concretized
-        solvable = True
-        for node in sub_closure[IPD]:
-            predecessors = G.predecessors(node)
-            if len(predecessors) > 0:
-                # # We require the sub-closure has at least 1 node with all concrete parents
-                # all_concrete = True
-                # for parent in predecessors:
-                #     if G[parent][node]['used'] == 0:
-                #         all_concrete = False
-                #         break
-                # if all_concrete:
-                #     solvable = True
-                #     break
-
-                # We should not consider a in-node if it is not the out-most one
-                if len(set(predecessors).intersection(sub_closure[IPD])) == 0:
-                    for parent in predecessors:
-                        if G[parent][node]['used'] == 0:
-                            if parent not in in_nodes:
-                                # we allow unconcretized in_nodes, since they are not the out-most in-nodes
-                                print "IPD: parent -- node: " + IPD + ': ' + parent + ' - ' + node
-                                solvable = False
-                                break
-
-
+        solvable = HS_solvability_check(G, sub_closure[IPD], IPD)
         if solvable:
             end_nodes = HS_resolve_sub_closure(G, sub_closure[IPD], IPD)
             # replace the in_nodes with the IPD in the super_closure
@@ -340,6 +321,29 @@ def HS_resolve_super_closure(G, in_nodes, doms):
 
     # return ['Out']  # for testing only
     return in_nodes
+
+# Function checks if a sub-closure is solvable
+def HS_solvability_check(G, in_nodes, IPD):
+    solvable = True
+    sub_nodes = []
+    for node in in_nodes:
+        sub_nodes = HS_get_decedents_before(G, sub_nodes, node, IPD)
+
+    # For each in-nodes, we check if all its external in-links are concretized
+    for node in in_nodes:
+        predecessors = G.predecessors(node)
+        if len(predecessors) > 0:
+            # We should not consider a in-node if it is not the out-most one
+            ext_predecessors = set(predecessors) - set(sub_nodes)
+            for parent in ext_predecessors:
+                if G[parent][node]['used'] == 0:
+                    # we allow unconcretized in_nodes, since they are not the out-most in-nodes
+                    print "IPD: parent -- node: " + IPD + ': ' + parent + ' - ' + node
+                    solvable = False
+                    break
+
+    return  solvable
+
 
 
 def HS_resolve_sub_closure(G, in_nodes, IPD):
@@ -387,7 +391,7 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
         # For all edges out of IPD, we assign order starting from O_in_max + 1
         for edge in end_edges:
             lower = O_in_max + 1
-            upper = O_in_max + int(math.floor(math.log(N_in_max, 2)))
+            upper = O_in_max + int(math.floor(math.log(len(in_nodes), 2)))
 
             if upper > lower:
                 orderSet[edge] = range(lower, upper + 1)
@@ -399,7 +403,7 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
         # Otherwise, we start the order from O_in_max
         for edge in end_edges:
             lower = O_in_max
-            upper = O_in_max + int(math.floor(math.log(N_in_max, 2)))
+            upper = O_in_max + int(math.floor(math.log(len(in_nodes), 2)))
 
             if upper > lower:
                 orderSet[edge] = range(lower, upper + 1)
@@ -411,7 +415,7 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
     # Next, we initialize the OrderSet of the rest of the edges
     for edge in subGraph.edges():
         lower = O_in_min
-        upper = O_in_max + int(math.floor(math.log(N_in_max, 2)))
+        upper = O_in_max + int(math.floor(math.log(len(in_nodes), 2)))
 
         if upper > lower:
             orderSet[edge] = range(lower, upper + 1)
@@ -431,7 +435,9 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
     # Number of unconcreteized edges
     N_unconcrete = len(orderSet.keys())
 
+    iteration = 0
     while N_unconcrete > 0:
+        iteration += 1
         N_improve = 0
         # First handle the diverging case
         for edge in orderSet.keys():
@@ -444,6 +450,7 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
                     if len(successors) > 0:
                         for node in successors:
                             orderSet[(edge[0], node)] = [anc_info["max_order"]]
+                            print "Diverging handled: edge: " + edge[0] + ' - ' + edge[1] + " max_order=" + str(anc_info["max_order"])
                             HS_concretize(G, (edge[0], node), anc_info["max_order"], [0])
                             N_improve += 1
 
@@ -456,6 +463,7 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
                     cur_N_unconcrete += 1
                 if flag > 0:
                     N_improve += 1
+                    print "Edge pruned: edge: " + edge[0] + ' - ' + edge[1]
 
         # This parts handles the merging case
         if N_improve == 0 and cur_N_unconcrete > 0:
@@ -469,6 +477,8 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
                             orderSet[edge] = [HS_merge_order_rule(anc_info["N_max_order"], anc_info["max_order"])]
                             HS_concretize(G, edge, orderSet[edge][0], [0])
                             N_improve += 1
+                            print "Improved merging: edge: " + edge[0] + ' - ' + edge[1]
+                            print G.out_degree(edge[0])
                             # We just do one merging at a time
                             break
 
@@ -476,8 +486,17 @@ def HS_resolve_sub_closure(G, in_nodes, IPD):
         if cur_N_unconcrete < N_unconcrete:
             N_unconcrete = cur_N_unconcrete
 
+
         if N_unconcrete > 0 and N_improve == 0:
             print "I can't solve this sub-closure any further"
+            # We exit early, so we need to revise the end_nodes to include all nodes that are not concretized
+            end_nodes = []
+            for edge in orderSet.keys():
+                if G[edge[0]][edge[1]]['used'] == 0:
+                    anc_info = HS_get_anc_info(G, edge[0])
+                    if anc_info["N_concrete"] > 0:
+                        if edge[0] not in end_nodes:
+                            end_nodes.append(edge[0])
             break
 
 
@@ -490,6 +509,7 @@ def HS_concretize(G, edge, edgeOrder, upstream_area):
     G[edge[0]][edge[1]]['used'] = 1
     G.node[edge[0]]['used'] = 1
     G.node[edge[0]]['cumArea'] = sum(upstream_area)
+    print "Concretized: " + edge[0] + " - " + edge[1] + " Order=" + str(edgeOrder)
 
 # return the information related to the stream orders of the ancestor
 def HS_get_anc_info(G, node):
@@ -507,11 +527,11 @@ def HS_get_anc_info(G, node):
             # we find a concretized parent
             anc_info['N_concrete'] += 1
             if G[parent][node]['order'] > anc_info["max_order"]:
-                anc_info["max_order"] = 1
+                anc_info["N_max_order"] = 1
                 anc_info["max_order"] = G[parent][node]['order']
             else:
                 if G[parent][node]['order'] == anc_info["max_order"]:
-                    anc_info["max_order"] += 1
+                    anc_info["N_max_order"] += 1
 
             if G[parent][node]['order'] < anc_info["min_order"]:
                 anc_info["min_order"] = G[parent][node]['order']
@@ -570,7 +590,7 @@ def HS_prune_order_set(G, edge, orderSet):
                 candOrder.remove(order)
                 nOrder -= 1
         lower = candOrder[0]
-        flag = 1
+        # flag = 1
 
     # Rule 2: update the upper
     new_upper = upper
@@ -586,7 +606,7 @@ def HS_prune_order_set(G, edge, orderSet):
             if order > new_upper:
                 candOrder.remove(order)
                 nOrder -= 1
-        flag = 1
+        # flag = 1
 
     upper = candOrder[nOrder-1]
 
@@ -602,14 +622,19 @@ def HS_prune_order_set(G, edge, orderSet):
                     if order > upper:
                         candOrder.remove(order)
                         nOrder -= 1
-                flag = 1
+                # flag = 1
+
+
+    if candOrder < orderSet[edge]:
+        orderSet[edge] = candOrder
+        flag = 1
+    else:
+        flag = 0
 
     # We concretize the edge if it is a singleton
     if nOrder == 1:
         HS_concretize(G, edge, candOrder[0], [0])
         flag = 2
-
-    orderSet[edge] = candOrder
 
     return flag
 
