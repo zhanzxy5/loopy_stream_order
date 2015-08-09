@@ -12,6 +12,7 @@ __author__ = 'Zhan Xianyuan'
 import matplotlib.pyplot as plt
 import networkx as nx
 import math
+from copy import deepcopy
 
 
 # Major function
@@ -43,11 +44,15 @@ def Loopy_HS_order(Fdir, prefix, nodeFileName, edgeFileName, isDraw):
     in_nodes = HS_get_leaves(G)
     print 'Number of initial in-nodes = ' + str(len(in_nodes))
 
-    # in_nodes = HS_simplify_from_top(G, in_nodes)
+    in_nodes = HS_simplify_from_top(G, in_nodes)
 
     # This is main iteration
-    # while 1:
-    for i in range(5):
+    iteration = 1
+    while 1:
+    # for i in range(3):
+        print "\nIteration: " + str(iteration)
+        iteration += 1
+
         end_nodes = HS_resolve_super_closure(G, in_nodes, doms)
 
         if len(end_nodes) == 0:
@@ -247,12 +252,112 @@ def HS_merge_order_rule(N_max, max_order):
     else:
         return max_order
 
+# # This one is the old function: Obsolete
+# # This one handles the super-closure, which performs simplify from top, and forms sub-closures, and finally returns IPDs as new in-nodes
+# def HS_resolve_super_closure(G, in_nodes, doms):
+#     # Initial simplify_from_top
+#     in_nodes = HS_simplify_from_top(G, in_nodes)
+#
+#     print "Number of in_nodes = " + str(len(in_nodes))
+#     print in_nodes
+#     # From the in_nodes, we form a set of sub-closures
+#     sub_closure = {}
+#     IPDdict = {}
+#     for node_key in in_nodes:
+#         IPD = doms[node_key]
+#         # We might encounter cases that the in-nodes itself serve as IPD, under such cases, we need to merge it into downstream dominators
+#         while 1:
+#             if IPD in in_nodes:
+#                 IPD = doms[IPD]
+#             else:
+#                 break
+#         if IPD not in sub_closure.keys():
+#             sub_closure[IPD] = [node_key]
+#         else:
+#             sub_closure[IPD].append(node_key)
+#         IPDdict[node_key] = IPD
+#
+#     # We need to continue merge some of the sub-closure, that the in-nodes have in-nodes ancestors
+#     # Under such cases, we merge the sub-closure to its in-nodes ancestor's sub-closure
+#     flag = True
+#     while flag:
+#         flag = False
+#         for node_key in in_nodes:
+#             predecessors = G.predecessors(node_key)
+#             local_in_node = set(predecessors).intersection(sub_closure[IPDdict[node_key]])
+#             all_in_node = set(predecessors).intersection(in_nodes)
+#             out_in_node = list(all_in_node - local_in_node)
+#             if len(out_in_node) >0:
+#                 # We are in trouble, we need to merge the sub-closure to its parents'
+#                 # We just merge to the first parent, the rest will be handled by the loop
+#                 # directly merge
+#                 sub_closure[IPDdict[out_in_node[0]]] = sub_closure[IPDdict[out_in_node[0]]] + sub_closure[IPDdict[node_key]]
+#                 old_IPD = IPDdict[node_key]
+#                 for node in sub_closure[old_IPD]:
+#                     IPDdict[node] = IPDdict[out_in_node[0]]
+#                 del sub_closure[old_IPD]
+#                 flag = True
+#
+#     print "Number of IPDs = " + str(len(sub_closure.keys()))
+#     N_improve = 0
+#     IPD_list = sub_closure.keys()
+#     for IPD in IPD_list:
+#         print "Sub-closure: " + IPD
+#         print sub_closure[IPD]
+#
+#         solvable = HS_solvability_check(G, sub_closure[IPD], IPD)
+#         if solvable:
+#             end_nodes = HS_resolve_sub_closure(G, sub_closure[IPD], IPD)
+#             # replace the in_nodes with the IPD in the super_closure
+#             for i in range(len(in_nodes)):
+#                 if in_nodes[i] in sub_closure[IPD]:
+#                     in_nodes[i] = end_nodes[0]
+#
+#             if len(end_nodes)>1:
+#                 for i in range(len(end_nodes)-1):
+#                     in_nodes.append(end_nodes[i+1])
+#             # Remove this sub-closure entry
+#             del sub_closure[IPD]
+#             N_improve += 1
+#
+#     # # If we got stuck, then we need to further analyze the dependency among sub-closures
+#     # IPD_dependent = {}
+#     # for IPD in sub_closure.keys():
+#     #     IPD_dependent[IPD] = []
+#
+#     # if N_improve == 0:
+#     #     for node_key in in_nodes:
+#     #         ancestor_nodes = nx.ancestors(G,node_key)
+#     #         local_in_node = ancestor_nodes.intersection(sub_closure[IPDdict[node_key]])
+#     #         all_in_node = ancestor_nodes.intersection(in_nodes)
+#     #         out_in_node = list(all_in_node - local_in_node)
+#     #         if len(out_in_node) >0:
+#     #             for node in out_in_node:
+#     #                 if IPDdict[node] not in IPD_dependent[IPDdict[node_key]]:
+#     #                     IPD_dependent[IPDdict[node_key]].append(IPDdict[node])
+#     #     print IPD_dependent
+#     #
+#     #     # We merge mutually dependent sub-closures, here we just do 1 if necessary:
+#     #     # if a depend on b, b depend on a, then new IPD = IPD(IPD(a), IPD(b))
+#     #     IPD_merge_list = []
+#     #     for IPD in sub_closure.keys():
+#     #         if IPD not in IPD_merge_list:
+#     #             for depIPD in IPD_dependent[IPD]:
+#     #                 if IPD in IPD_dependent[depIPD]:
+#     #                     IPD_merge_list.append(IPD)
+#     #                     IPD_merge_list.append(depIPD)
+#
+#     in_nodes = list(set(in_nodes))
+#
+#     # return ['Out']  # for testing only
+#     return in_nodes
+
 # This one handles the super-closure, which performs simplify from top, and forms sub-closures, and finally returns IPDs as new in-nodes
 def HS_resolve_super_closure(G, in_nodes, doms):
     # Initial simplify_from_top
     in_nodes = HS_simplify_from_top(G, in_nodes)
 
-    print "\nNumber of in_nodes = " + str(len(in_nodes))
+    print "Number of in_nodes = " + str(len(in_nodes))
     print in_nodes
     # From the in_nodes, we form a set of sub-closures
     sub_closure = {}
@@ -271,29 +376,103 @@ def HS_resolve_super_closure(G, in_nodes, doms):
             sub_closure[IPD].append(node_key)
         IPDdict[node_key] = IPD
 
-    # We need to continue merge some of the sub-closure, that the in-nodes have in-nodes parent
-    # Under such cases, we merge the sub-closure to its in-nodes parent's sub-closure
-    flag = True
-    while flag:
-        flag = False
-        for node_key in in_nodes:
-            predecessors = G.predecessors(node_key)
-            local_in_node = set(predecessors).intersection(sub_closure[IPDdict[node_key]])
-            all_in_node = set(predecessors).intersection(in_nodes)
-            out_in_node = list(all_in_node - local_in_node)
-            if len(out_in_node) >0:
-                # We are in trouble, we need to merge the sub-closure to its parents'
-                # We just merge to the first parent, the rest will be handled by the loop
-                # directly merge
-                sub_closure[IPDdict[out_in_node[0]]] = sub_closure[IPDdict[out_in_node[0]]] + sub_closure[IPDdict[node_key]]
-                old_IPD = IPDdict[node_key]
-                for node in sub_closure[old_IPD]:
-                    IPDdict[node] = IPDdict[out_in_node[0]]
-                del sub_closure[old_IPD]
-                flag = True
-
-    print "Number of IPDs = " + str(len(sub_closure.keys()))
+    print "Initial Number of IPDs = " + str(len(sub_closure.keys()))
+    print sub_closure.keys()
+    # We need to analyze the dependency between IPDs, so as to merge the mutually dependent IPDs
+    IPD_dependent = {}
     for IPD in sub_closure.keys():
+        IPD_dependent[IPD] = []
+
+    for node_key in in_nodes:
+        ancestor_nodes = nx.ancestors(G,node_key)
+        local_in_node = ancestor_nodes.intersection(sub_closure[IPDdict[node_key]])
+        all_in_node = ancestor_nodes.intersection(in_nodes)
+        out_in_node = list(all_in_node - local_in_node)
+        if len(out_in_node) >0:
+            for node in out_in_node:
+                if IPDdict[node] not in IPD_dependent[IPDdict[node_key]]:
+                    IPD_dependent[IPDdict[node_key]].append(IPDdict[node])
+    print IPD_dependent
+
+    IPD_merge_list = []
+    for IPD in sub_closure.keys():
+        # The first case, if the sub-closure does not depend on anything, we can solve directly
+        if len(IPD_dependent[IPD]) == 0:
+            IPD_merge_list.append([IPD])
+        else:
+            # The sub-closure depend on other sub-closures
+            cand_set = [IPD]
+            for depIPD in IPD_dependent[IPD]:
+                if IPD in IPD_dependent[depIPD]:
+                    # if it mutually dependent with another IPD
+                    cand_set.append(depIPD)
+            # We now have a candidate merge set, we need to put it into a proper entry in IPD_merge_list
+            flag = True
+            for i in range(len(IPD_merge_list)):
+                if len(set(IPD_merge_list[i]).intersection(cand_set)) > 0:
+                    flag = False
+                    # We've found an entry to replace
+                    for node in cand_set:
+                        if node not in IPD_merge_list[i]:
+                            IPD_merge_list[i].append(node)
+                    break
+            if flag:
+                 IPD_merge_list.append(cand_set)
+
+    print "Mergable IPDs:"
+    print IPD_merge_list
+
+    # Now we need to merge these mergable IPDs
+    for merge_list in IPD_merge_list:
+        if len(merge_list) > 1:
+            # We need to do some merging here
+            # We use the IPDs in the merge_list as in-nodes to create a newIPD
+            temp_in_nodes = deepcopy(merge_list)
+            # We first attampt to reduce the set by only keeping the dominating IPDs
+            # We need to assume acyclic graph here, otherwise we are in trouble
+            for nodeE in merge_list:
+                for nodeS in merge_list:
+                    if nodeS != nodeE:
+                        if nx.has_path(G, nodeS, nodeE):
+                            # remove nodeS
+                            if nodeS in temp_in_nodes:
+                                temp_in_nodes.remove(nodeS)
+            # print temp_in_nodes
+            if len(temp_in_nodes) == 1:
+                print merge_list
+                # We find a singleton, we merge everything together
+                cand_closure = sub_closure[temp_in_nodes[0]]
+                for old_IPD in merge_list:
+                    if old_IPD != temp_in_nodes[0]:
+                        cand_closure = cand_closure + sub_closure[old_IPD]
+                        del sub_closure[old_IPD]
+                sub_closure[temp_in_nodes[0]] = cand_closure
+
+    # print sub_closure
+    # # We need to continue merge some of the sub-closure, that the in-nodes have in-nodes ancestors
+    # # Under such cases, we merge the sub-closure to its in-nodes ancestor's sub-closure
+    # flag = True
+    # while flag:
+    #     flag = False
+    #     for node_key in in_nodes:
+    #         predecessors = G.predecessors(node_key)
+    #         local_in_node = set(predecessors).intersection(sub_closure[IPDdict[node_key]])
+    #         all_in_node = set(predecessors).intersection(in_nodes)
+    #         out_in_node = list(all_in_node - local_in_node)
+    #         if len(out_in_node) >0:
+    #             # We are in trouble, we need to merge the sub-closure to its parents'
+    #             # We just merge to the first parent, the rest will be handled by the loop
+    #             # directly merge
+    #             sub_closure[IPDdict[out_in_node[0]]] = sub_closure[IPDdict[out_in_node[0]]] + sub_closure[IPDdict[node_key]]
+    #             old_IPD = IPDdict[node_key]
+    #             for node in sub_closure[old_IPD]:
+    #                 IPDdict[node] = IPDdict[out_in_node[0]]
+    #             del sub_closure[old_IPD]
+    #             flag = True
+
+    # print "Number of IPDs = " + str(len(sub_closure.keys()))
+    IPD_list = sub_closure.keys()
+    for IPD in IPD_list:
         print "Sub-closure: " + IPD
         print sub_closure[IPD]
 
@@ -308,10 +487,11 @@ def HS_resolve_super_closure(G, in_nodes, doms):
             if len(end_nodes)>1:
                 for i in range(len(end_nodes)-1):
                     in_nodes.append(end_nodes[i+1])
+            # Remove this sub-closure entry
+            del sub_closure[IPD]
 
     in_nodes = list(set(in_nodes))
 
-    # return ['Out']  # for testing only
     return in_nodes
 
 # Function checks if a sub-closure is solvable
@@ -322,7 +502,7 @@ def HS_solvability_check(G, in_nodes, IPD):
         sub_nodes = HS_get_decedents_before(G, sub_nodes, node, IPD)
 
     # For each in-nodes, we check if all its external in-links are concretized
-    for node in in_nodes:
+    for node in sub_nodes:
         predecessors = G.predecessors(node)
         if len(predecessors) > 0:
             # We should not consider a in-node if it is not the out-most one
