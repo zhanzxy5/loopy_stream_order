@@ -466,28 +466,6 @@ def HS_resolve_super_closure(G, in_nodes, doms):
                         del sub_closure[old_IPD]
                 sub_closure[temp_in_nodes[0]] = cand_closure
 
-    # print sub_closure
-    # # We need to continue merge some of the sub-closure, that the in-nodes have in-nodes ancestors
-    # # Under such cases, we merge the sub-closure to its in-nodes ancestor's sub-closure
-    # flag = True
-    # while flag:
-    #     flag = False
-    #     for node_key in in_nodes:
-    #         predecessors = G.predecessors(node_key)
-    #         local_in_node = set(predecessors).intersection(sub_closure[IPDdict[node_key]])
-    #         all_in_node = set(predecessors).intersection(in_nodes)
-    #         out_in_node = list(all_in_node - local_in_node)
-    #         if len(out_in_node) >0:
-    #             # We are in trouble, we need to merge the sub-closure to its parents'
-    #             # We just merge to the first parent, the rest will be handled by the loop
-    #             # directly merge
-    #             sub_closure[IPDdict[out_in_node[0]]] = sub_closure[IPDdict[out_in_node[0]]] + sub_closure[IPDdict[node_key]]
-    #             old_IPD = IPDdict[node_key]
-    #             for node in sub_closure[old_IPD]:
-    #                 IPDdict[node] = IPDdict[out_in_node[0]]
-    #             del sub_closure[old_IPD]
-    #             flag = True
-
     # print "Number of IPDs = " + str(len(sub_closure.keys()))
     IPD_list = sub_closure.keys()
     for IPD in IPD_list:
