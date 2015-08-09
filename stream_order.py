@@ -15,6 +15,24 @@ import math
 from copy import deepcopy
 
 
+# Change the configuration here to run the code
+def main():  # For testing purpose
+    # Input parameter: parameter to change
+    # This is the directory that contains the data
+    Fdir = 'data/'
+    # This one specify the prefix you want to add to the processed file
+    prefix = 'Labeled_'
+    # Following are the file names for the node and edge file
+    nodeFileName = 'Node_Shintaein_v2.csv'
+    edgeFileName = 'Link_Shintaein_v2.csv'
+
+    # Put this one to true if you want to visualize the edge order, for testing only
+    # The drawing also shows the direction of the edges
+    isDraw = True
+
+    Loopy_HS_order(Fdir, prefix, nodeFileName, edgeFileName, isDraw)
+
+
 # Major function
 def Loopy_HS_order(Fdir, prefix, nodeFileName, edgeFileName, isDraw):
     G = nx.DiGraph()
@@ -61,7 +79,7 @@ def Loopy_HS_order(Fdir, prefix, nodeFileName, edgeFileName, isDraw):
             in_nodes = end_nodes
 
     # Work done! Write results to files
-    HS_output_graph(G)
+    HS_output_graph(G, Fdir, prefix, nodeFileName, edgeFileName)
     if isDraw:
         HS_draw_graph(G)
 
@@ -118,7 +136,7 @@ def HS_add_edge(Fdir, edgeFileName, G):
         edge_id = line.split(',')[0]
         from_node = line.split(',')[1]
         to_node = line.split(',')[2]
-        node_length = line.split(',')[3]
+        node_length = float(line.split(',')[3])
 
         # Rest of the attribute will be put into a separate dictionary
         edge_otherAttr = {}
@@ -842,24 +860,46 @@ def HS_draw_graph(G):
 
 
 # Output data
-def HS_output_graph(G):
+def HS_output_graph(G, Fdir, prefix, nodeFileName, edgeFileName):
     print "Writing processed graph to file..."
-    # TODO: implement the output IO here
+    nodeFile = open(Fdir + prefix + nodeFileName, 'w')
+    edgeFile = open(Fdir + prefix + edgeFileName, 'w')
 
+    # Writing to the node file
+    outputline = "Node_id,X-coord,Y-Coord,Invert_Elevation,Area,Cumulative_Area\n"
+    nodeFile.write(outputline)
+    for node in G.nodes():
+        outputline = node + ',' + str(G.node[node]['pos'][0]) + ',' + str(G.node[node]['pos'][1]) + \
+                     ',' + str(G.node[node]['invElevation']) + ',' + str(G.node[node]['area']) + ','
+        cArea = G.node[node]['cumArea']
+        if G.node[node]['cumArea'] == 0:
+            cArea = -1
+        outputline = outputline + str(cArea) + '\n'
+        nodeFile.write(outputline)
 
-def main():  # For testing purpose
-    # Input parameter: parameter to change
-    Fdir = 'data/'
-    prefix = 'Labeled'
-    nodeFileName = 'Node_Shintaein.csv'
-    edgeFileName = 'Link_Shintaein.csv'
+    nodeFile.close()
 
-    # Put this one to true if you want to visualize the edge order, for testing only
-    # The drawing also shows the direction of the edges
-    isDraw = True
+    # Writing to edge file
+    outputline = "Link_ID,From_Node,To_Node,Length,Slope,Stream_Order"
+    for header_key in G[G.edges()[0][0]][G.edges()[0][1]]['otherAttr'].keys():
+        if header_key != "edge_id":
+            outputline = outputline + ',' + header_key
+    outputline = outputline + '\n'
+    edgeFile.write(outputline)
+    for edge in G.edges():
+        elevation1 = G.node[edge[0]]['invElevation']
+        elevation2 = G.node[edge[1]]['invElevation']
+        slope = abs(elevation1 - elevation2) / G[edge[0]][edge[1]]['length']
+        outputline = G[edge[0]][edge[1]]['otherAttr']['edge_id'] + ',' + edge[0] + ',' + edge[1] \
+                     + ',' + str(G[edge[0]][edge[1]]['length']) + ',' + str(slope) + ',' \
+                     + str(G[edge[0]][edge[1]]['order'])
+        for header_key in G[edge[0]][edge[1]]['otherAttr'].keys():
+            if header_key != "edge_id":
+                outputline = outputline + ',' + G[edge[0]][edge[1]]['otherAttr'][header_key]
+        outputline = outputline + '\n'
+        edgeFile.write(outputline)
 
-    Loopy_HS_order(Fdir, prefix, nodeFileName, edgeFileName, isDraw)
-
+    edgeFile.close()
 
 if __name__ == "__main__":
     main()
